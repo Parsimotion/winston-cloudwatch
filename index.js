@@ -118,9 +118,10 @@ WinstonCloudWatch.prototype.submit = function(callback) {
   }
 
   _(this.logEvents)
-  .groupBy(({ rawMessage }) => `${groupNameGetter(rawMessage)}|${streamNameGetter(rawMessage)}`)
+  .groupBy(({ rawMessage }) => `${groupNameGetter(rawMessage)}_${streamNameGetter(rawMessage)}`)
   .map((events, destination) => {
-    const [ groupName, streamName ] = destination.split("|");
+    const groupName = groupNameGetter(events[0].rawMessage);
+    const streamName = streamNameGetter(events[0].rawMessage);
     cloudWatchIntegration.upload(
       this.cloudwatchlogs,
       groupName,

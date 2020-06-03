@@ -1,20 +1,55 @@
-import * as winston from 'winston';
+import TransportStream = require("winston-transport");
 
-import { CloudWatch, CloudWatchLogs } from 'aws-sdk';
+import { CloudWatch, CloudWatchLogs } from "aws-sdk";
 
-interface CloudWatchIntegration {
-  upload(aws: CloudWatchLogs, groupName: string, streamName: string, cb: ((err: Error, data: any) => void)): void;
-  getToken(aws: CloudWatchLogs, groupName: string, streamName: string, cb: ((err: Error, data: string) => void)): void;
-  ensureGroupPresent(aws: CloudWatchLogs, name: string, cb: ((err: Error, data: boolean) => void)): void;
-  getStream(aws: CloudWatchLogs, groupName: string, streamName: string, cb: ((err: Error, data: CloudWatchLogs.Types.DescribeLogStreamsResponse) => void)): void;
+import winston = require('winston');
+
+// Declare the default WinstonCloudwatch class
+declare class WinstonCloudwatch extends TransportStream {
+  kthxbye(callback: () => void): void;
+  upload(
+    aws: CloudWatchLogs,
+    groupName: string,
+    streamName: string,
+    logEvents: any[],
+    retentionInDays: number,
+    cb: ((err: Error, data: any) => void)
+  ): void;
+  getToken(
+    aws: CloudWatchLogs,
+    groupName: string,
+    streamName: string,
+    retentionInDays: number,
+    cb: ((err: Error, data: string) => void)
+  ): void;
+  ensureGroupPresent(
+    aws: CloudWatchLogs,
+    name: string,
+    retentionInDays: number,
+    cb: ((err: Error, data: boolean) => void)
+  ): void;
+  getStream(
+    aws: CloudWatchLogs,
+    groupName: string,
+    streamName: string,
+    cb: ((
+      err: Error,
+      data: CloudWatchLogs.Types.DescribeLogStreamsResponse
+    ) => void)
+  ): void;
   ignoreInProgress(cb: ((err: Error) => void)): void;
+  constructor (options?: WinstonCloudwatch.CloudwatchTransportOptions);
 }
+// Export the default winston cloudwatch class
+export = WinstonCloudwatch;
 
-declare module "winston" {
-  
-  export type LogObject = {level: string, msg: string, meta?: any};
+// Declare optional exports
+declare namespace WinstonCloudwatch {
+
+  export type LogObject = winston.LogEntry;
 
   export interface CloudwatchTransportOptions {
+    cloudWatchLogs?: CloudWatchLogs,
     level?: string;
     logGroupName?: string | (() => string);
     logStreamName?: string | (() => string);
@@ -27,18 +62,7 @@ declare module "winston" {
     proxyServer?: string;
     uploadRate?: number;
     errorHandler?: ((err: Error) => void);
-  }
-
-  export interface Winston {
-    add(transport: winston.TransportInstance, options?: winston.TransportOptions | CloudwatchTransportOptions, created?: boolean): winston.LoggerInstance;
-  }
-
-  export interface CloudwatchTransportInstance extends winston.TransportInstance {
-    new(options?: CloudwatchTransportOptions): CloudwatchTransportInstance;
-    kthxbye(cb: (() => void)): void;
-  }
-
-  export interface Transports {
-    CloudWatch: CloudwatchTransportInstance
+    silent?: boolean;
+    retentionInDays?: number;
   }
 }

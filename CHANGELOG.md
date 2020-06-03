@@ -1,3 +1,64 @@
+### 2.3.2
+
+kthxbye will try to flush events before stopping the interval
+
+### 2.3.1
+
+Fix TS type definition
+
+### 2.3.0
+
+Allow custom aws cloudwatchlogs instance
+
+### 2.2.0
+
+Removed MAX_BATCH_SIZE_COUNT
+
+### 2.1.0
+
+Updated dependencies
+
+### 2.0.9
+
+The check to see if we're already posting events is now stream dependent
+
+### 2.0.8
+
+Updated TS definitions
+
+### 2.0.7
+
+Updated TS definitions
+
+### 2.0.6
+
+Updated TS definitions
+
+### 2.0.5
+
+Updated TS definitions
+
+### 2.0.4
+
+Updated TS definitions
+
+### 2.0.3
+
+Stringify supports circular references
+
+### 2.0.2
+
+New version just because I forgot to add silent property to TS definition
+
+### 2.0.1
+
+Remove unused variables; example on how to use messageFormatter
+
+### 2.0.0
+
+Update to Winston 3.0. Update dependencies.
+(thanks to @nfantone and @patrickrgaffney for the precious help)
+
 ### 1.13.1
 
 Fix TypeScript type https://github.com/lazywithclass/winston-cloudwatch/issues/79

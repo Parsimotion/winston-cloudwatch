@@ -4,10 +4,12 @@ var util = require('util'),
     winston = require('winston'),
     AWS = require('aws-sdk'),
     cloudWatchIntegration = require('./lib/cloudwatch-integration'),
-    _ = require('lodash'),
+    isEmpty = require('lodash.isempty'),
+    assign = require('lodash.assign'),
+    isError = require('lodash.iserror'),
     stringify = require('./lib/utils').stringify,
-    debug = require('./lib/utils').debug;
-
+    debug = require('./lib/utils').debug,
+    defaultFlushTimeoutMs = 10000;
 
 var WinstonCloudWatch = function(options) {
   winston.Transport.call(this, options);
@@ -21,58 +23,61 @@ var WinstonCloudWatch = function(options) {
   var awsSecretKey = options.awsSecretKey;
   var awsRegion = options.awsRegion;
   var messageFormatter = options.messageFormatter ? options.messageFormatter : function(log) {
-    return _.isEmpty(log.meta) && !(log.meta instanceof Error) ?
-      [ log.level, log.msg ].join(' - ') :
-      [ log.level, log.msg, stringify(log.meta) ].join(' - ');
+    return [ log.level, log.message ].join(' - ')
   };
   this.formatMessage = options.jsonMessage ? stringify : messageFormatter;
-  var proxyServer = this.proxyServer = options.proxyServer;
+  this.proxyServer = options.proxyServer;
   this.uploadRate = options.uploadRate || 2000;
   this.logEvents = [];
   this.errorHandler = options.errorHandler;
 
-  if (this.proxyServer) {
-    AWS.config.update({
-      httpOptions: {
-        agent: require('proxy-agent')(this.proxyServer)
-      }
-    });
+  if (options.cloudWatchLogs) {
+    this.cloudwatchlogs = options.cloudWatchLogs;
+  } else {
+    if (this.proxyServer) {
+      AWS.config.update({
+        httpOptions: {
+          agent: require('proxy-agent')(this.proxyServer)
+        }
+      });
+    }
+
+    var config = {};
+
+    if (awsAccessKeyId && awsSecretKey && awsRegion) {
+      config = { accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretKey, region: awsRegion };
+    } else if (awsRegion && !awsAccessKeyId && !awsSecretKey) {
+      // Amazon SDK will automatically pull access credentials
+      // from IAM Role when running on EC2 but region still
+      // needs to be configured
+      config = { region: awsRegion };
+    }
+
+    if (options.awsOptions) {
+      config = assign(config, options.awsOptions);
+    }
+
+    this.cloudwatchlogs = new AWS.CloudWatchLogs(config);
   }
-
-  var config = {};
-
-  if (awsAccessKeyId && awsSecretKey && awsRegion) {
-    config = { accessKeyId: awsAccessKeyId, secretAccessKey: awsSecretKey, region: awsRegion };
-  } else if (awsRegion && !awsAccessKeyId && !awsSecretKey) {
-    // Amazon SDK will automatically pull access credentials
-    // from IAM Role when running on EC2 but region still
-    // needs to be configured
-    config = { region: awsRegion };
-  }
-
-  if(options.awsOptions){
-    config = _.assign(config, options.awsOptions);
-  }
-
-  this.cloudwatchlogs = new AWS.CloudWatchLogs(config);
 
   debug('constructor finished');
 };
 
 util.inherits(WinstonCloudWatch, winston.Transport);
 
-WinstonCloudWatch.prototype.log = function(level, msg, meta, callback) {
-  debug('log (called by winston)', level, msg, meta);
+WinstonCloudWatch.prototype.log = function (info, callback) {
+  debug('log (called by winston)', info);
 
-  var log = { level: level, msg: msg, meta: meta };
-  if (!_.isEmpty(msg)) {
-    this.add(log);
+  if (!isEmpty(info.message) || isError(info.message)) { 
+    this.add(info);
   }
 
-  if (!/^uncaughtException: /.test(msg)) {
+  if (!/^uncaughtException: /.test(info.message)) {
     // do not wait, just return right away
     return callback(null, true);
   }
+
+  debug('message not empty, proceeding')
 
   // clear interval and send logs immediately
   // as Winston is about to end the process
@@ -86,7 +91,7 @@ WinstonCloudWatch.prototype.add = function(log) {
 
   var self = this;
 
-  if (!_.isEmpty(log.msg)) {
+  if (!isEmpty(log.message) || isError(log.message)) {
     self.logEvents.push({
       rawMessage: log,
       message: self.formatMessage(log),
@@ -113,7 +118,8 @@ WinstonCloudWatch.prototype.submit = function(callback) {
   var streamNameGetter = typeof this.logStreamName === 'function' ?
     this.logStreamName : _.constant(this.logStreamName);
   var retentionInDays = this.retentionInDays;
-  if (_.isEmpty(this.logEvents)) {
+
+  if (isEmpty(this.logEvents)) {
     return callback();
   }
 
@@ -135,10 +141,17 @@ WinstonCloudWatch.prototype.submit = function(callback) {
 
 };
 
-WinstonCloudWatch.prototype.kthxbye = function(callback) {
+WinstonCloudWatch.prototype.kthxbye = function(callback) {  
   clearInterval(this.intervalId);
   this.intervalId = null;
-  this.submit(callback);
+  this.flushTimeout = this.flushTimeout || (Date.now() + defaultFlushTimeoutMs);
+
+  this.submit((function(error) {    
+    if (error) return callback(error);
+    if (isEmpty(this.logEvents)) return callback();
+    if (Date.now() > this.flushTimeout) return callback(new Error('Timeout reached while waiting for logs to submit'));
+    else setTimeout(this.kthxbye.bind(this, callback), 0);
+  }).bind(this));
 };
 
 winston.transports.CloudWatch = WinstonCloudWatch;

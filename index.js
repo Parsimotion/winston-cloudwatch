@@ -93,6 +93,7 @@ WinstonCloudWatch.prototype.add = function(log) {
 
   if (!isEmpty(log.message) || isError(log.message)) {
     self.logEvents.push({
+      rawMessage: log,
       message: self.formatMessage(log),
       timestamp: new Date().getTime()
     });
@@ -112,24 +113,32 @@ WinstonCloudWatch.prototype.add = function(log) {
 };
 
 WinstonCloudWatch.prototype.submit = function(callback) {
-  var groupName = typeof this.logGroupName === 'function' ?
-    this.logGroupName() : this.logGroupName;
-  var streamName = typeof this.logStreamName === 'function' ?
-    this.logStreamName() : this.logStreamName;
+  var groupNameGetter = typeof this.logGroupName === 'function' ?
+    this.logGroupName : _.constant(this.logGroupName);
+  var streamNameGetter = typeof this.logStreamName === 'function' ?
+    this.logStreamName : _.constant(this.logStreamName);
   var retentionInDays = this.retentionInDays;
 
   if (isEmpty(this.logEvents)) {
     return callback();
   }
 
-  cloudWatchIntegration.upload(
-    this.cloudwatchlogs,
-    groupName,
-    streamName,
-    this.logEvents,
-    retentionInDays,
-    callback
-  );
+  _(this.logEvents)
+  .groupBy(({ rawMessage }) => `${groupNameGetter(rawMessage)}_${streamNameGetter(rawMessage)}`)
+  .map((events, destination) => {
+    const groupName = groupNameGetter(events[0].rawMessage);
+    const streamName = streamNameGetter(events[0].rawMessage);
+    cloudWatchIntegration.upload(
+      this.cloudwatchlogs,
+      groupName,
+      streamName,
+      events.map(it => _.omit(it, "rawMessage")),
+      retentionInDays,
+      callback
+    );
+  })
+  .value()
+
 };
 
 WinstonCloudWatch.prototype.kthxbye = function(callback) {  

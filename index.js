@@ -118,20 +118,24 @@ WinstonCloudWatch.prototype.submit = function(callback) {
   }
 
   _(this.logEvents)
-  .groupBy(({ rawMessage }) => `${groupNameGetter(rawMessage)}_${streamNameGetter(rawMessage)}`)
-  .map((events, destination) => {
-    const groupName = groupNameGetter(events[0].rawMessage);
-    const streamName = streamNameGetter(events[0].rawMessage);
-    cloudWatchIntegration.upload(
-      this.cloudwatchlogs,
-      groupName,
-      streamName,
-      events.map(it => _.omit(it, "rawMessage")),
-      retentionInDays,
-      callback
-    );
-  })
-  .value()
+    .groupBy(({ rawMessage }) => `${groupNameGetter(rawMessage)}_${streamNameGetter(rawMessage)}`)
+    .map((events, destination) => {
+      const groupName = groupNameGetter(events[0].rawMessage);
+      const streamName = streamNameGetter(events[0].rawMessage);
+      cloudWatchIntegration.upload(
+        this.cloudwatchlogs,
+        groupName,
+        streamName,
+        events.map(it => _.omit(it, "rawMessage")),
+        retentionInDays,
+        (err, itemsUploaded) => {
+          if (err) callback(err)
+          _.pullAll(this.logEvents, events.splice(0, itemsUploaded))
+          callback()
+        }
+      );
+    })
+    .value()
 
 };
 
